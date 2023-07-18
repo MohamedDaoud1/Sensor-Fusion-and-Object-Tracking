@@ -1,4 +1,3 @@
-# ---------------------------------------------------------------------
 # Project "Track 3D-Objects Over Time"
 # Copyright (C) 2020, Dr. Antje Muntzinger / Dr. Andreas Haja.
 #
@@ -9,11 +8,9 @@
 # https://www.udacity.com/course/self-driving-car-engineer-nanodegree--nd013
 # ----------------------------------------------------------------------
 #
-
 # imports
 import numpy as np
 import collections
-
 # add project directory to python path to enable relative imports
 import os
 import sys
@@ -21,7 +18,6 @@ PACKAGE_PARENT = '..'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(os.path.join(os.getcwd(), os.path.expanduser(__file__))))
 sys.path.append(os.path.normpath(os.path.join(SCRIPT_DIR, PACKAGE_PARENT)))
 import misc.params as params 
-
 class Track:
     '''Track class with state, covariance, id, score'''
     def __init__(self, meas, id):
@@ -35,22 +31,33 @@ class Track:
         # - initialize track state and track score with appropriate values
         ############
         self.window = params.window
+        #transform from sense cord to vehicle corrdination
+        pos_sens = np.ones((4,1))
+        pos_sens[0:3] = meas.z[0:3]
+        pos_veh = meas.sensor.sens_to_veh * pos_sens
+        
+        #set the initial x
+        self.x = np.zeros((6,1))
+        self.x[0:3] = pos_veh[0:3]
+        
+        #set estimation error covariance P postion 
+        P_pos = M_rot * meas.R * np.transpose(M_rot)
 
-        print(meas)
-        self.x = np.matrix([[meas.z[0]],
-                        [ meas.z[1]],
-                        [ meas.z[2]],
-                        [ 0.        ],
-                        [ 0.        ],
-                        [ 0.        ]])
-        self.P = np.matrix([[meas.R[0,0], 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00],
-                        [0.0e+00, meas.R[1,1], 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00],
-                        [0.0e+00, 0.0e+00, meas.R[2,2], 0.0e+00, 0.0e+00, 0.0e+00],
-                        [0.0e+00, 0.0e+00, 0.0e+00, 2.5e+03, 0.0e+00, 0.0e+00],
-                        [0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 2.5e+03, 0.0e+00],
-                        [0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 0.0e+00, 2.5e+01]])
+        #set the covariance P velocity
+        sigma_p44 = params.sigma_p44
+        sigma_p55 = params.sigma_p55
+        sigma_p66 = params.sigma_p66
+        
+        P_vel = np.matrix([[sigma_p44**2,0,0],
+                           [0,sigma_p55**2,0],
+                           [0,0,sigma_p66**2]])
+        
+        # set the overall P
+        self.P = np.zeros((6,6))
+        self.P[0:3,0:3] = P_pos
+        self.P[3:6,3:6] = P_vel
         self.state = 'initialized'
-        self.score = 1/self.window
+        self.score = 1.0/self.window
         
         ############
         # END student code
@@ -63,7 +70,6 @@ class Track:
         self.height = meas.height
         self.yaw =  np.arccos(M_rot[0,0]*np.cos(meas.yaw) + M_rot[0,1]*np.sin(meas.yaw)) # transform rotation from sensor to vehicle coordinates
         self.t = meas.t
-
     def set_x(self, x):
         self.x = x
         
@@ -85,7 +91,6 @@ class Track:
         
         
 ###################        
-
 class Trackmanagement:
     '''Track manager with logic for initializing and deleting objects'''
     def __init__(self):
@@ -105,18 +110,21 @@ class Trackmanagement:
         # decrease score for unassigned tracks
         for i in unassigned_tracks:
             track = self.track_list[i]
-            # check visibility    
+            # check visibility
+            print(meas_list)
             if meas_list: # if not empty
-                print(meas_list)
                 if meas_list[0].sensor.in_fov(track.x):
                     # your code goes here
                     track.score -= 1/track.window 
-
-            # delete old tracks   
-            if(track.score < params.confirmed_threshold and track.state == "confirmed"):
+        # delete old tracks
+        for track in self.track_list:
+            print(track.state,track.score)
+            if (track.score < params.delete_threshold) and (track.state == 'confirmed'):
                 self.delete_track(track)
-
-            
+            elif (track.state != 'confirmed') and (track.P[0,0] >= params.max_P):
+                self.delete_track(track)
+            elif (track.state != 'confirmed') and (track.P[1,1] >= params.max_P):
+                self.delete_track(track)
         ############
         # END student code
         ############ 
