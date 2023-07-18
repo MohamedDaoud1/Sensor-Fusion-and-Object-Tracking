@@ -38,18 +38,35 @@ class Association:
         # - update list of unassigned measurements and unassigned tracks
         ############
         
-        # the following only works for at most one track and one measurement
-        self.association_matrix = np.matrix([]) # reset matrix
-        self.unassigned_tracks = [] # reset lists
-        self.unassigned_meas = []
+        # # the following only works for at most one track and one measurement
+        # self.association_matrix = np.matrix([]) # reset matrix
+        # self.unassigned_tracks = [] # reset lists
+        # self.unassigned_meas = []
         
-        if len(meas_list) > 0:
-            self.unassigned_meas = [0]
-        if len(track_list) > 0:
-            self.unassigned_tracks = [0]
-        if len(meas_list) > 0 and len(track_list) > 0: 
-            self.association_matrix = np.matrix([[0]])
+        # if len(meas_list) > 0:
+        #     self.unassigned_meas = [0]
+        # if len(track_list) > 0:
+        #     self.unassigned_tracks = [0]
+        # if len(meas_list) > 0 and len(track_list) > 0: 
+        #     self.association_matrix = np.matrix([[0]])
+        N = len(track_list) # N tracks
+        M = len(meas_list) # M measurements
+        self.unassigned_tracks = list(range(N))
+        self.unassigned_meas = list(range(M))
+        # initialize association matrix
+        self.association_matrix = np.inf*np.ones((N,M)) 
         
+        # loop over all tracks and all measurements to set up association matrix
+        for i in range(N): 
+            track = track_list[i]
+            for j in range(M):
+                meas = meas_list[j]
+                dist = self.MHD(track, meas, KF)
+                if self.gating(dist, meas.sensor):
+                    self.association_matrix[i,j] = dist
+        print(self.association_matrix)
+        
+
         ############
         # END student code
         ############ 
@@ -64,25 +81,36 @@ class Association:
         ############
 
         # the following only works for at most one track and one measurement
-        update_track = 0
-        update_meas = 0
+        # update_track = 0
+        # update_meas = 0
         
-        # remove from list
-        self.unassigned_tracks.remove(update_track) 
-        self.unassigned_meas.remove(update_meas)
-        self.association_matrix = np.matrix([])
-            
+        # # remove from list
+        # self.unassigned_tracks.remove(update_track) 
+        # self.unassigned_meas.remove(update_meas)
+        # self.association_matrix = np.matrix([])
+        
+        trackInd, measInd = np.unravel_index(np.argmin(self.association_matrix, axis=None), self.association_matrix.shape)
+        if(self.association_matrix[trackInd, measInd] == np.inf):       
+            return np.nan, np.nan
+        update_track = self.unassigned_tracks[trackInd]
+        update_meas = self.unassigned_meas[measInd]  
+        self.association_matrix = np.delete(np.delete(self.association_matrix, trackInd, axis=0), measInd, axis=1)
+        self.unassigned_tracks = np.delete(self.unassigned_tracks,trackInd)
+        self.unassigned_meas = np.delete(self.unassigned_meas,measInd)
+        print("trackInd: " + str(trackInd))
+        print("measInd: " + str(measInd))
+        return update_track, update_meas  
         ############
         # END student code
         ############ 
-        return update_track, update_meas     
+        # return update_track, update_meas     
 
     def gating(self, MHD, sensor): 
         ############
         # TODO Step 3: return True if measurement lies inside gate, otherwise False
         ############
-        
-        pass    
+        gating = MHD < chi2.ppf(params.gating_threshold, sensor.dim_meas)
+        return gating    
         
         ############
         # END student code
@@ -92,8 +120,11 @@ class Association:
         ############
         # TODO Step 3: calculate and return Mahalanobis distance
         ############
-        
-        pass
+        # calc Mahalanobis distance
+        gamma = meas.z - meas.sensor.get_hx(track.x)      
+        S = meas.sensor.get_H(track.x) * track.P * meas.sensor.get_H(track.x).transpose() + meas.R
+        MHD = gamma.transpose()*np.linalg.inv(S)*gamma # Mahalanobis distance formula
+        return(MHD)
         
         ############
         # END student code
@@ -104,6 +135,7 @@ class Association:
         self.associate(manager.track_list, meas_list, KF)
     
         # update associated tracks with measurements
+        # input("Press Enter to continue...")
         while self.association_matrix.shape[0]>0 and self.association_matrix.shape[1]>0:
             
             # search for next association between a track and a measurement

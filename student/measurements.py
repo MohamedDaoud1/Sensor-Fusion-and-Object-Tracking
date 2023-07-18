@@ -47,8 +47,11 @@ class Sensor:
         # TODO Step 4: implement a function that returns True if x lies in the sensor's field of view, 
         # otherwise False.
         ############
-
-        return True
+        xCamFrame = self.veh_to_sens * np.vstack((x[0:3],[1]))
+        angleRelCam = np.arctan2(xCamFrame[1],xCamFrame[0])
+        if angleRelCam > self.fov[0] and angleRelCam < self.fov[1]:
+            return True
+        return False
         
         ############
         # END student code
@@ -70,9 +73,14 @@ class Sensor:
             # - make sure to not divide by zero, raise an error if needed
             # - return h(x)
             ############
-
-            pass
-        
+            pos_veh = np.ones((4, 1)) # homogeneous coordinates
+            pos_veh[0:3] = x[0:3] 
+            pos_sens = self.veh_to_sens*pos_veh
+            hx = np.zeros((2,1))
+            if x[0] != 0:
+                hx[0,0] = self.c_i - self.f_i * (pos_sens[1] / pos_sens[0])
+                hx[1,0] = self.c_j - self.f_j * (pos_sens[2] / pos_sens[0])
+            return hx
             ############
             # END student code
             ############ 
@@ -115,9 +123,9 @@ class Sensor:
         # TODO Step 4: remove restriction to lidar in order to include camera as well
         ############
         
-        if self.name == 'lidar':
-            meas = Measurement(num_frame, z, self)
-            meas_list.append(meas)
+        # if self.name == 'lidar':
+        meas = Measurement(num_frame, z, self)
+        meas_list.append(meas)
         return meas_list
         
         ############
@@ -155,9 +163,12 @@ class Measurement:
             ############
             # TODO Step 4: initialize camera measurement including z and R 
             ############
-
-            pass
-        
+            self.z = np.zeros((sensor.dim_meas,1)) # measurement vector
+            self.z[0] = z[0]
+            self.z[1] = z[1]
+            self.R = np.matrix([[params.sigma_cam_i**2, 0], # measurement noise covariance matrix
+                                [0, params.sigma_cam_j**2]])
+            
             ############
             # END student code
             ############ 
